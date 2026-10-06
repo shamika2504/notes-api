@@ -1,4 +1,5 @@
 import express from "express";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 // The shape every note must have. TypeScript checks this for us.
 type Note = {
@@ -8,14 +9,32 @@ type Note = {
 
 const app = express();
 const port = 3000;
+// The file where notes are stored between restarts.
+const dataFile = "notes.json";
 app.use(express.json());
 
-// Our "database" for now: a list that lives in memory.
-const notes: Note[] = [
-  { id: 1, text: "Learn what a REST API is" },
-  { id: 2, text: "Build one in TypeScript" },
-];
-let nextId = 3;
+// Read the notes from the file, or start with two examples.
+function loadNotes(): Note[] {
+  if (!existsSync(dataFile)) {
+    return [
+      { id: 1, text: "Learn what a REST API is" },
+      { id: 2, text: "Build one in TypeScript" },
+    ];
+  }
+
+  const fileContents = readFileSync(dataFile, "utf8");
+  return JSON.parse(fileContents) as Note[];
+}
+
+// Write the current notes to the file.
+function saveNotes(): void {
+  writeFileSync(dataFile, JSON.stringify(notes, null, 2));
+}
+
+const notes: Note[] = loadNotes();
+
+// The id the next new note will get: one more than the biggest so far.
+let nextId = Math.max(0, ...notes.map((note) => note.id)) + 1;
 
 // When someone visits GET /notes, send back the list as JSON.
 app.get("/notes", (req, res) => {
@@ -35,9 +54,11 @@ app.post("/notes", (req, res) => {
   const newNote: Note = { id: nextId, text: text.trim() };
   nextId = nextId + 1;
   notes.push(newNote);
+  saveNotes();  
 
   res.status(201).json(newNote);
 });
+        // in POST
 
 // Find one note by the id in the address, e.g. /notes/2
 function findNote(idFromUrl: string): Note | undefined {
@@ -74,6 +95,7 @@ app.put("/notes/:id", (req, res) => {
   }
 
   note.text = text.trim();
+  saveNotes();          // in PUT
   res.json(note);
 });
 
@@ -87,6 +109,7 @@ app.delete("/notes/:id", (req, res) => {
   }
 
   notes.splice(notes.indexOf(note), 1);
+  saveNotes();          // in DELETE
   res.status(204).end();
 });
 
